@@ -21,6 +21,8 @@ class PretrainModelManager:
         self.model = BertForModel(args, data.n_known_cls)
         self.tokenizer = AutoTokenizer.from_pretrained(self.args.bert_model, do_lower_case=True)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("mps" if torch.mps.is_available() else self.device)
+        print(f"Using device: {self.device}")
         self.model.to(self.device)
         
         self.best_eval_score = 0
@@ -68,18 +70,18 @@ class PretrainModelManager:
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
 
-            for step, batch in enumerate(self.data.pretrain_semi_dataloader):
+            for _, batch in enumerate(self.data.pretrain_semi_dataloader):
                 batch = tuple(t.to(self.device) for t in batch)
                 input_ids, input_mask, segment_ids, label_ids = batch
                 mask_ids, mask_lb = self.mask_tokens(input_ids.cpu(), self.tokenizer)
-                mask_ids, mask_lb = mask_ids.cuda(), mask_lb.cuda()
+                mask_ids, mask_lb = mask_ids.to(self.device), mask_lb.to(self.device)
                 loss_mlm = self.model(mask_ids, input_mask, segment_ids, labels=mask_lb, mode='mlm')
                 
                 try:
-                    batch = labelediter.next()
+                    batch = next(labelediter)
                 except StopIteration:
                     labelediter = iter(self.data.pretrain_labeled_dataloader)
-                    batch = labelediter.next()
+                    batch = next(labelediter)
                 batch = tuple(t.to(self.device) for t in batch)
                 input_ids, input_mask, segment_ids, label_ids = batch
                 loss_ce, _ = self.model(input_ids, segment_ids, input_mask, label_ids, mode="train") 
