@@ -28,7 +28,7 @@ class ModelManager:
         self.labelMap = None
         
         self.seed = args.seed         
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("mps" if torch.mps.is_available() else "cpu")
         if args.cluster_num_factor > 1:
             self.num_labels = self.predict_k(args, data) 
         else:
@@ -53,7 +53,7 @@ class ModelManager:
         
     def set_seed(self, seed):
         torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+        # torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
         random.seed(seed)
         torch.backends.cudnn.deterministic = True
@@ -204,18 +204,18 @@ class ModelManager:
                 loss_u = (cost_mat * s_dist).sum(1).mean()
 
                 mask = torch.where(label_ids < len(self.proto_l), 1, 0).reshape((-1,1))
-                sim_mat = self.pairwise_cosine_sim(pooled, torch.tensor(self.proto_l).float().cuda()) / args.temperature
+                sim_mat = self.pairwise_cosine_sim(pooled, torch.tensor(self.proto_l).float().to(self.device)) / args.temperature
                 s_dist = F.softmax(sim_mat, dim=1)
-                cost_mat = 1 - self.pairwise_cosine_sim(pooled, torch.tensor(self.proto_l).float().cuda())
+                cost_mat = 1 - self.pairwise_cosine_sim(pooled, torch.tensor(self.proto_l).float().to(self.device))
                 loss_l = (cost_mat * s_dist * mask).sum(1).mean()
 
                 loss_pro = loss_u + args.gamma * loss_l
                 
                 try:
-                    batch = labelediter.next()
+                    batch = next(labelediter)
                 except StopIteration:
                     labelediter = iter(data.train_labeled_dataloader)
-                    batch = labelediter.next()
+                    batch = next(labelediter)
                 batch = tuple(t.to(self.device) for t in batch)
                 input_ids, input_mask, segment_ids, label_ids = batch
                 loss_ce, _ = self.model(input_ids, segment_ids, input_mask, label_ids, mode='train') 
@@ -264,7 +264,7 @@ class ModelManager:
         return torch.sqrt(sum_sq_a+sum_sq_b-2*a.mm(bt))
     
     def predict_k(self, args, data):
-        feats, _ = self.get_features_labels(data.train_semi_dataloader, self.pretrained_model.cuda(), args)
+        feats, _ = self.get_features_labels(data.train_semi_dataloader, self.pretrained_model.device(), args)
         feats = feats.cpu().numpy()
         km = KMeans(n_clusters = data.num_labels).fit(feats)
         y_pred = km.labels_
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     parser = init_model()
     args = parser.parse_args()
     data = Data(args)
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
+    # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
     if args.pretrain:
         print('Pre-training begin...')

@@ -20,7 +20,6 @@ class PretrainModelManager:
         self.data = data
         self.model = BertForModel(args, data.n_known_cls)
         self.tokenizer = AutoTokenizer.from_pretrained(self.args.bert_model, do_lower_case=True)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("mps" if torch.mps.is_available() else self.device)
         print(f"Using device: {self.device}")
         self.model.to(self.device)
@@ -32,7 +31,7 @@ class PretrainModelManager:
 
     def set_seed(self, seed):
         torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+        # torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
         random.seed(seed)
         torch.backends.cudnn.deterministic = True
